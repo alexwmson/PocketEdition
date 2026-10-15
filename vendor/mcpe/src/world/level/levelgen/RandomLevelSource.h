@@ -26,7 +26,6 @@ class LevelChunk;
 
 
 #include "../chunk/ChunkSource.h"
-#include "LargeCaveFeature.h"
 #include "synth/PerlinNoise.h"
 #include "../../../SharedConstants.h"
 
@@ -60,13 +59,6 @@ public:
 	//bool save(bool force, ProgressListener progressListener) {
 private:
 	float* getHeights(float* buffer, int x, int y, int z, int xSize, int ySize, int zSize);
-	void calcWaterDepths(ChunkSource* parent, int xt, int zt);
-
-public:
-	//Biome** biomes;
-	LargeCaveFeature caveFeature;
-	int waterDepths[16+16][16+16];
-private:
 	ChunkMap chunkMap;
 
 	Random random;
@@ -77,10 +69,9 @@ private:
     PerlinNoise perlinNoise3;
 	PerlinNoise scaleNoise;
     PerlinNoise depthNoise;
-    PerlinNoise forestNoise;
+	PerlinNoise forestNoise;
 
 	Level* level;
-	bool spawnMobs;
 
 	float* buffer;
     float sandBuffer[16 * 16];
@@ -91,36 +82,6 @@ private:
 	float* br;
 	float* sr;
 	float* dr;
-	float* fi;
-	float* fis;
-    ///*private*/ float[] temperatures;
-};
-
-class PerformanceTestChunkSource : public ChunkSource
-{
-	Level* level;
-public:
-	PerformanceTestChunkSource(Level* level)
-	:	ChunkSource(),
-		level(level)
-	{
-
-	}
-
-	virtual bool hasChunk(int x, int y) { return true; };
-	virtual LevelChunk* getChunk(int x, int z) { return create(x, z); };
-
-    virtual LevelChunk* create(int x, int z);
-	virtual void postProcess(ChunkSource* parent, int x, int z) {};
-
-	virtual bool tick() { return false; };
-
-	virtual bool shouldSave() { return false; };
-
-    /**
-     * Returns some stats that are rendered when the user holds F3.
-     */
-	virtual std::string gatherStats() { return "PerformanceTestChunkSource"; };
 };
 
 

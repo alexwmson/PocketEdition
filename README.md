@@ -79,16 +79,25 @@ multiple queries against one seed.
 
 ## Known behavior
 
-- Caves are disabled because their call is commented out in this source
-  revision.
+- Population runs through water and lava springs. Lapis, trees, flowers,
+  reeds, and cacti are placed first because they consume the same random
+  stream and can change the blocks a spring replaces. Snow and mobs are not
+  placed. Caves, ravines, and dungeons are not generated. Clay and the earlier
+  ore veins (dirt, gravel, coal, iron, gold, and redstone) are unchanged:
+  they consume the same random numbers and can replace stone the diamond vein
+  would otherwise claim.
+- Springs from an earlier chunk can add or remove water before a later
+  chunk's clay. That is why they are included even though they follow the
+  diamond vein inside one chunk. Seeds `0` and `-1` still have 1,055 and
+  1,033 diamond blocks.
 - Diamond generation makes one size-7 ore-feature attempt per populated
   chunk, anchored at `y = 0..15`; resulting vein blocks can extend slightly
   higher and across chunk boundaries.
 - Writes outside the finite 256×256 world are discarded by the original empty
   boundary chunk.
 - Generation uses the source's MT19937 RNG, not Java Edition's LCG.
-- Mob spawning is disabled through Creative world settings. It occurs after
-  block population and does not affect generated blocks.
+- Chunk hashes include lapis, vegetation, and springs. They still differ from
+  a full population where snow or a mob would have changed a block.
 
 See `docs/GENERATOR_NOTES.md` for provenance and implementation details.
 

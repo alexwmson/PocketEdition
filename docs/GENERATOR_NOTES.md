@@ -29,8 +29,8 @@ reapplying the adaptations listed below.
 
 ## Intentional adaptations
 
-The generation algorithms and feature order are unchanged. The extraction
-makes these portability changes:
+The generation algorithms and feature order through the diamond vein are
+unchanged. The extraction makes these portability changes:
 
 1. Seed storage and RNG state use explicit 32-bit integer types. The original
    Android/Win32 targets used 32-bit `long`; Linux x86_64 uses a 64-bit `long`.
@@ -42,6 +42,11 @@ makes these portability changes:
    mob spawning; terrain and block population are the same.
 5. The wrapper exposes read-only chunk bytes, hashes, diamond counts, and
    diamond coordinates.
+6. Chunk population continues through the lava spring. Lapis, trees, flowers,
+   reeds, and cacti stay in front of the springs because they consume the
+   population stream and edit the blocks a spring is allowed to replace.
+   Snow and mobs are still omitted. Cave, canyon, dungeon, and lake features
+   are not part of this generator.
 
 ## Generation flow
 
@@ -53,7 +58,8 @@ For each seed:
    (`x` outer, `z` inner).
 4. `ChunkCache` creates base terrain with `RandomLevelSource::getChunk`.
 5. Once the southeast-neighbor gate is satisfied, `postProcess` adds clay,
-   ores, vegetation, springs, and snow.
+   ore veins through diamond, then lapis, vegetation, and water and lava
+   springs.
 6. Scan final chunk bytes for id `56`.
 
 The `ChunkCache` gate requires `(x+1,z)`, `(x,z+1)`, and `(x+1,z+1)`.
@@ -69,9 +75,17 @@ chunk from a completed world.
 - Diamond ore is the field `Tile::emeraldOre`, registered as block id `56`.
 - Diamond placement occurs after clay, dirt, gravel, coal, iron, gold, and
   redstone, so all preceding RNG consumption and block replacement matters.
-- Later springs from one chunk can affect stone available to a neighboring
-  chunk. The full post-process pass and original traversal are retained.
-- `LargeCaveFeature::apply` is commented out in the active chunk path.
+- Water and lava springs run after the diamond vein in the same chunk, but a
+  finished chunk places them with a +8 block offset, so they land in the
+  southeast neighbor before that neighbor's clay. Extra or missing water
+  changes whether clay draws its vein and shifts every later ore, including
+  diamond. Lapis, trees, flowers, reeds, and cacti are restored with the
+  springs so that stream is the original one.
+- Snow and mobs still run after the springs and are not part of this
+  generator. Earlier ore veins still cross chunk borders, so the original
+  traversal is retained.
+- Cave, canyon, and dungeon generation is not part of this generator. The
+  cave pass was already commented out in the active chunk path.
 - The generator-version constructor argument is accepted but unused by
   `RandomLevelSource`.
 
@@ -89,7 +103,9 @@ Current regression values:
   `5653855523172728039`.
 
 Seed `0` was also compared before and after extraction against a build directly
-from `SourceCode/handheld`; both produced 1,055 diamond blocks.
+from `SourceCode/handheld`; both produced 1,055 diamond blocks. The chunk
+hashes above include lapis, vegetation, and springs. They still omit snow
+and mobs, so they are not hashes of a complete decoration pass.
 
 These are regression checks for this supplied source tree. The archive includes
 no official Mojang seed fixtures, so comparison with a real 0.6.1 save remains

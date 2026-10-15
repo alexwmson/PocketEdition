@@ -3,13 +3,12 @@
 #include "feature/FeatureInclude.h"
 #include "../Level.h"
 #include "../ChunkPos.h"
-#include "../MobSpawner.h"
 #include "../biome/Biome.h"
 #include "../biome/BiomeSource.h"
 #include "../chunk/LevelChunk.h"
 #include "../material/Material.h"
-#include "../tile/Tile.h"
 #include "../tile/HeavyTile.h"
+#include "../tile/Tile.h"
 #include "../../../util/Random.h"
 
 const float RandomLevelSource::SNOW_CUTOFF = 0.5f;
@@ -27,14 +26,8 @@ RandomLevelSource::RandomLevelSource(Level* level, std::int32_t seed, int versio
 	scaleNoise(&random, 10),
 	depthNoise(&random, 16),
 	forestNoise(&random, 8),
-	spawnMobs(spawnMobs),
-	pnr(NULL), ar(NULL), br(NULL), sr(NULL), dr(NULL), fi(NULL), fis(NULL)
-	//biomes(NULL)
+	pnr(NULL), ar(NULL), br(NULL), sr(NULL), dr(NULL)
 {
-	for (int i=0; i<32; ++i)
-	for (int j=0; j<32; ++j)
-		waterDepths[i][j] = 0;
-
 	buffer = new float[MAX_BUFFER_SIZE];
 
 	Random randomCopy = random;
@@ -59,8 +52,6 @@ RandomLevelSource::~RandomLevelSource() {
 	delete[] br;
 	delete[] sr;
 	delete[] dr;
-	delete[] fi;
-	delete[] fis;
 }
 
 /*public*/
@@ -219,15 +210,13 @@ void RandomLevelSource::buildSurfaces(int xOffs, int zOffs, unsigned char* block
 
 /*public*/
 void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
-
-	level->isGeneratingTerrain = true;
-
     HeavyTile::instaFall = true;
+    level->isGeneratingTerrain = true;
+
     int xo = xt * 16;
     int zo = zt * 16;
 
     Biome* biome = level->getBiomeSource()->getBiome(xo + 16, zo + 16);
-    //    Biome* biome = Biome::forest;
 
     random.setSeed(level->getSeed());
     int xScale = random.nextInt() / 2 * 2 + 1;
@@ -237,37 +226,6 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 		static_cast<std::uint32_t>(zt) * static_cast<std::uint32_t>(zScale);
     random.setSeed(static_cast<std::int32_t>(
 		populationSeed ^ static_cast<std::uint32_t>(level->getSeed())));
-
-	// //@todo: hide those chunks if they are aren't visible
-//    if (random.nextInt(4) == 0) {
-//        int x = xo + random.nextInt(16) + 8;
-//        int y = random.nextInt(128);
-//        int z = zo + random.nextInt(16) + 8;
-//        LakeFeature feature(Tile::calmWater->id);
-//		feature.place(level, &random, x, y, z);
-//        LOGI("Adding underground lake @ (%d,%d,%d)\n", x, y, z);
-//    }
-
-	////@todo: hide those chunks if they are aren't visible
- //   if (random.nextInt(8) == 0) {
- //       int x = xo + random.nextInt(16) + 8;
- //       int y = random.nextInt(random.nextInt(120) + 8);
- //       int z = zo + random.nextInt(16) + 8;
- //       if (y < 64 || random.nextInt(10) == 0) {
-	//		LakeFeature feature(Tile::calmLava->id);
-	//		feature.place(level, &random, x, y, z);
-	//	}
- //   }
-
-	static float totalTime = 0;
-	const float st = getTimeS();
-
-    //for (int i = 0; i < 8; i++) {
-    //    int x = xo + random.nextInt(16) + 8;
-    //    int y = random.nextInt(128);
-    //    int z = zo + random.nextInt(16) + 8;
-    //    MonsterRoomFeature().place(level, random, x, y, z);
-    //}
 
     for (int i = 0; i < 10; i++) {
         int x = xo + random.nextInt(16);
@@ -333,7 +291,9 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 		feature.place(level, &random, x, y, z);
     }
 
-    // lapis ore
+    // Lapis, vegetation, and springs follow diamond in this chunk. They still
+    // have to run: the draws feed later spring positions, and a finished
+    // chunk can edit the southeast neighbor before that neighbor's clay.
     for (int i = 0; i < 1; i++) {
         int x = xo + random.nextInt(16);
         int y = random.nextInt(16) + random.nextInt(16);
@@ -344,16 +304,13 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 
     const float ss = 0.5f;
     int oFor = (int) ((forestNoise.getValue(xo * ss, zo * ss) / 8 + random.nextFloat() * 4 + 4) / 3);
-    int forests = 0;//1; (java: 0)
+    int forests = 0;
     if (random.nextInt(10) == 0) forests += 1;
 
-    if (biome == Biome::forest) forests += oFor + 2; // + 5
-    if (biome == Biome::rainForest) forests += oFor + 2; //+ 5
-    if (biome == Biome::seasonalForest) forests += oFor + 1; // 2
-    if (biome == Biome::taiga) {
-		forests += oFor + 1; // + 5
-		//LOGI("Biome is taiga!\n");
-	}
+    if (biome == Biome::forest) forests += oFor + 2;
+    if (biome == Biome::rainForest) forests += oFor + 2;
+    if (biome == Biome::seasonalForest) forests += oFor + 1;
+    if (biome == Biome::taiga) forests += oFor + 1;
 
     if (biome == Biome::desert) forests -= 20;
     if (biome == Biome::tundra) forests -= 20;
@@ -369,7 +326,6 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 		    tree->place(level, &random, x, y, z);
 			delete tree;
 		}
-		//printf("placing tree at %d, %d, %d\n", x, y, z);
     }
 
     for (int i = 0; i < 2; i++) {
@@ -403,17 +359,7 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
         FlowerFeature feature(Tile::mushroom2->id);
 		feature.place(level, &random, x, y, z);
     }
-	/*int grassCount = 1;
-	for (int i = 0; i < grassCount; i++) {
-		int x = xo + random.nextInt(16) + 8;
-		int y = random.nextInt(Level::genDepth);
-		int z = zo + random.nextInt(16) + 8;
-		Feature* grassFeature = biome->getGrassFeature(&random);
-		if (grassFeature) {
-			grassFeature->place(level, &random, x, y, z);
-			delete grassFeature;
-		}
-	}*/
+
     for (int i = 0; i < 10; i++) {
         int x = xo + random.nextInt(16) + 8;
         int y = random.nextInt(128);
@@ -421,14 +367,6 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
         ReedsFeature feature;
 		feature.place(level, &random, x, y, z);
     }
-	
-
-    //if (random.nextInt(32) == 0) {
-    //    int x = xo + random.nextInt(16) + 8;
-    //    int y = random.nextInt(128);
-    //    int z = zo + random.nextInt(16) + 8;
-    //    PumpkinFeature().place(level, random, x, y, z);
-    //}
 
     int cacti = 0;
     if (biome == Biome::desert) cacti += 5;
@@ -438,7 +376,6 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
         int y = random.nextInt(128);
         int z = zo + random.nextInt(16) + 8;
         CactusFeature feature;
-        //LOGI("Tried creating a cactus at %d, %d, %d\n", x, y, z);
         feature.place(level, &random, x, y, z);
     }
 
@@ -458,33 +395,8 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 		feature.place(level, &random, x, y, z);
     }
 
-	if (spawnMobs && !level->isClientSide)
-		MobSpawner::postProcessSpawnMobs(level, biome, xo + 8, zo + 8, 16, 16, &random);
-
-	//LOGI("Reading temp: 1\n");
-    float* temperatures = level->getBiomeSource()->getTemperatureBlock(/*NULL,*/ xo + 8, zo + 8, 16, 16);
-    for (int x = xo + 8; x < xo + 8 + 16; x++)
-        for (int z = zo + 8; z < zo + 8 + 16; z++) {
-            int xp = x - (xo + 8);
-            int zp = z - (zo + 8); 
-            int y = level->getTopSolidBlock(x, z);
-            float temp = temperatures[xp * 16 + zp] - (y - 64) / 64.0f * SNOW_SCALE;
-            if (temp < SNOW_CUTOFF) {
-                if (y > 0 && y < 128 && level->isEmptyTile(x, y, z) && level->getMaterial(x, y - 1, z)->blocksMotion()) {
-                    if (level->getMaterial(x, y - 1, z) != Material::ice) level->setTile(x, y, z, Tile::topSnow->id);
-                }
-            }
-        }
-	//LOGI("Reading temp: 0 END\n");
-
-	const float et = getTimeS();
-	totalTime += (et-st);
-
-	//printf("Time to place features: %f. Total %f\n", et - st, totalTime);
-
     HeavyTile::instaFall = false;
-
-	level->isGeneratingTerrain = false;
+    level->isGeneratingTerrain = false;
 }
 
 LevelChunk* RandomLevelSource::create(int x, int z) {
@@ -513,7 +425,6 @@ LevelChunk* RandomLevelSource::getChunk(int xOffs, int zOffs) {
     prepareHeights(xOffs, zOffs, blocks, 0, temperatures);//biomes, temperatures);
     buildSurfaces(xOffs, zOffs, blocks, biomes);
 
-	//caveFeature.apply(this, level, xOffs, zOffs, blocks, LevelChunk::ChunkBlockCount);
     levelChunk->recalcHeightmap();
 
     return levelChunk;
@@ -610,52 +521,6 @@ float* RandomLevelSource::getHeights(float* buffer, int x, int y, int z, int xSi
     return buffer;
 }
 
-/*private*/
-void RandomLevelSource::calcWaterDepths(ChunkSource* parent, int xt, int zt) {
-    int xo = xt * 16;
-    int zo = zt * 16;
-    for (int x = 0; x < 16; x++) {
-        int y = level->getSeaLevel();
-        for (int z = 0; z < 16; z++) {
-            int xp = xo + x + 7;
-            int zp = zo + z + 7;
-            int h = level->getHeightmap(xp, zp);
-            if (h <= 0) {
-                if (level->getHeightmap(xp - 1, zp) > 0 || level->getHeightmap(xp + 1, zp) > 0 || level->getHeightmap(xp, zp - 1) > 0 || level->getHeightmap(xp, zp + 1) > 0) {
-                    bool hadWater = false;
-                    if (hadWater || (level->getTile(xp - 1, y, zp) == Tile::calmWater->id && level->getData(xp - 1, y, zp) < 7)) hadWater = true;
-                    if (hadWater || (level->getTile(xp + 1, y, zp) == Tile::calmWater->id && level->getData(xp + 1, y, zp) < 7)) hadWater = true;
-                    if (hadWater || (level->getTile(xp, y, zp - 1) == Tile::calmWater->id && level->getData(xp, y, zp - 1) < 7)) hadWater = true;
-                    if (hadWater || (level->getTile(xp, y, zp + 1) == Tile::calmWater->id && level->getData(xp, y, zp + 1) < 7)) hadWater = true;
-                    if (hadWater) {
-                        for (int x2 = -5; x2 <= 5; x2++) {
-                            for (int z2 = -5; z2 <= 5; z2++) {
-                                int d = (x2 > 0 ? x2 : -x2) + (z2 > 0 ? z2 : -z2);
-
-                                if (d <= 5) {
-                                    d = 6 - d;
-                                    if (level->getTile(xp + x2, y, zp + z2) == Tile::calmWater->id) {
-                                        int od = level->getData(xp + x2, y, zp + z2);
-                                        if (od < 7 && od < d) {
-                                            level->setData(xp + x2, y, zp + z2, d);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (hadWater) {
-                            level->setTileAndDataNoUpdate(xp, y, zp, Tile::calmWater->id, 7);
-                            for (int y2 = 0; y2 < y; y2++) {
-                                level->setTileAndDataNoUpdate(xp, y2, zp, Tile::calmWater->id, 8);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 bool RandomLevelSource::hasChunk(int x, int y) {
     //return x >= 0 && x < 16 && y >= 0 && y < 16;
 	return true;
@@ -690,43 +555,4 @@ Biome::MobList RandomLevelSource::getMobsAt(const MobCategory& mobCategory, int 
         return Biome::MobList();
     }
     return biome->getMobs(mobCategory);
-}
-
-
-LevelChunk* PerformanceTestChunkSource::create(int x, int z)
-{
-	unsigned char* blocks = new unsigned char[LevelChunk::ChunkBlockCount];
-	memset(blocks, 0, LevelChunk::ChunkBlockCount);
-
-	for (int y = 0; y < 65; y++)
-	{
-		if (y < 60)
-		{
-			for (int x = (y + 1) & 1; x < 16; x += 2)
-			{
-				for (int z = y & 1; z < 16; z += 2)
-				{
-					blocks[x << 11 | z << 7 | y] = 3;
-				}
-			}
-		}
-		else
-		{
-			for (int x = 0; x < 16; x += 2)
-			{
-				for (int z = 0; z < 16; z += 2)
-				{
-					blocks[x << 11 | z << 7 | y] = 3;
-				}
-			}
-
-		}
-	}
-
-	LevelChunk* levelChunk = new LevelChunk(level, blocks, x, z);
-
-	//caveFeature.apply(this, level, xOffs, zOffs, blocks, LevelChunk::ChunkBlockCount);
-	levelChunk->recalcHeightmap();
-
-	return levelChunk;
 }
