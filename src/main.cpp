@@ -1,5 +1,6 @@
 #include "generator/WorldGenerator.h"
 
+#include <cctype>
 #include <cerrno>
 #include <climits>
 #include <cstdint>
@@ -17,11 +18,75 @@ void usage(std::ostream& output) {
         << "MCPE 0.6.1 finite-world generator\n"
         << "usage:\n"
         << "  mcpe-census count <seed> [--per-chunk]\n"
+        << "  mcpe-census count --range <start>-<end> [--per-chunk]\n"
         << "  mcpe-census chunk <seed> <chunk-x> <chunk-z> [--output <file>]\n"
         << "  mcpe-census diamonds <seed> [<chunk-x> <chunk-z>]\n"
         << "\n"
-        << "Seeds are signed 32-bit integers. Queryable chunk coordinates are\n"
-        << "0..25; only 0..15 contain generated MCPE finite-world terrain.\n";
+        << "Seeds are signed 32-bit integers. A count range is inclusive and\n"
+        << "runs in one process, printing one JSON object per seed. Negative\n"
+        << "bounds keep their sign, for example -10--1 or -10..-1.\n"
+        << "Queryable chunk coordinates are 0..25; only 0..15 contain\n"
+        << "generated MCPE finite-world terrain.\n";
+}
+
+struct SeedSpan {
+    std::int32_t start;
+    std::int32_t end;
+};
+
+long long parseInteger(const char* text, const char* name);
+
+std::int32_t requireSeed(long long value, const char* name) {
+    if (value < INT32_MIN || value > INT32_MAX) {
+        throw std::out_of_range(std::string(name) + " must be in signed 32-bit range");
+    }
+    return static_cast<std::int32_t>(value);
+}
+
+std::size_t rangeSeparator(const std::string& spec, std::size_t* length) {
+    const std::size_t dots = spec.find("..");
+    if (dots != std::string::npos) {
+        if (spec.find("..", dots + 2) != std::string::npos) {
+            throw std::invalid_argument("range must contain one start-end pair");
+        }
+        *length = 2;
+        return dots;
+    }
+
+    std::size_t index = 0;
+    if (!spec.empty() && (spec[0] == '+' || spec[0] == '-')) {
+        ++index;
+    }
+    while (index < spec.size() &&
+           std::isdigit(static_cast<unsigned char>(spec[index]))) {
+        ++index;
+    }
+    if (index == 0 || index >= spec.size() || spec[index] != '-') {
+        throw std::invalid_argument("range must look like 0-9 or -10--1");
+    }
+    *length = 1;
+    return index;
+}
+
+SeedSpan parseSeedRange(const std::string& spec) {
+    std::size_t separatorLength = 0;
+    const std::size_t separator = rangeSeparator(spec, &separatorLength);
+    if (separator == 0 || separator + separatorLength >= spec.size()) {
+        throw std::invalid_argument("range must look like 0-9 or -10--1");
+    }
+
+    const long long start = parseInteger(
+        spec.substr(0, separator).c_str(), "range start");
+    const long long end = parseInteger(
+        spec.substr(separator + separatorLength).c_str(), "range end");
+    if (start > end) {
+        throw std::invalid_argument("range start must not exceed range end");
+    }
+
+    SeedSpan span;
+    span.start = requireSeed(start, "range start");
+    span.end = requireSeed(end, "range end");
+    return span;
 }
 
 long long parseInteger(const char* text, const char* name) {
@@ -35,11 +100,7 @@ long long parseInteger(const char* text, const char* name) {
 }
 
 std::int32_t parseSeed(const char* text) {
-    const long long value = parseInteger(text, "seed");
-    if (value < INT32_MIN || value > INT32_MAX) {
-        throw std::out_of_range("seed must be in signed 32-bit range");
-    }
-    return static_cast<std::int32_t>(value);
+    return requireSeed(parseInteger(text, "seed"), "seed");
 }
 
 int parseChunk(const char* text, const char* name) {
@@ -80,18 +141,72 @@ void printChunkCounts(const mcpe::WorldGenerator& world) {
     std::cout << ']';
 }
 
-int runCount(int argc, char** argv) {
-    if (argc != 3 && !(argc == 4 && std::string(argv[3]) == "--per-chunk")) {
-        throw std::invalid_argument("count expects <seed> [--per-chunk]");
-    }
-    const mcpe::WorldGenerator world(parseSeed(argv[2]));
+void printCount(const mcpe::WorldGenerator& world, bool perChunk) {
     std::cout << "{\"version\":\"0.6.1\",\"seed\":" << world.seed()
               << ",\"diamond_block_id\":56"
               << ",\"diamonds\":" << world.countDiamonds();
-    if (argc == 4) {
+    if (perChunk) {
         printChunkCounts(world);
     }
-    std::cout << "}\n";
+    std::cout << "}\n" << std::flush;
+}
+
+int runCount(int argc, char** argv) {
+    bool perChunk = false;
+    bool sawSeed = false;
+    bool sawRange = false;
+    SeedSpan span = {0, 0};
+
+    for (int i = 2; i < argc; ++i) {
+        const std::string arg(argv[i]);
+        if (arg == "--per-chunk") {
+            if (perChunk) {
+                throw std::invalid_argument("count received --per-chunk twice");
+            }
+            perChunk = true;
+            continue;
+        }
+
+        std::string rangeSpec;
+        if (arg == "--range") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument("count --range expects <start>-<end>");
+            }
+            rangeSpec = argv[++i];
+        } else if (arg.compare(0, 8, "--range=") == 0) {
+            rangeSpec = arg.substr(8);
+        } else if (arg.compare(0, 2, "--") == 0) {
+            throw std::invalid_argument("unknown count option: " + arg);
+        } else {
+            if (sawSeed || sawRange) {
+                throw std::invalid_argument(
+                    "count expects <seed> [--per-chunk] or --range <start>-<end> [--per-chunk]");
+            }
+            span.start = parseSeed(argv[i]);
+            span.end = span.start;
+            sawSeed = true;
+            continue;
+        }
+
+        if (sawSeed || sawRange) {
+            throw std::invalid_argument("count received more than one seed range");
+        }
+        if (rangeSpec.empty()) {
+            throw std::invalid_argument("count --range expects <start>-<end>");
+        }
+        span = parseSeedRange(rangeSpec);
+        sawRange = true;
+    }
+
+    if (!sawSeed && !sawRange) {
+        throw std::invalid_argument(
+            "count expects <seed> [--per-chunk] or --range <start>-<end> [--per-chunk]");
+    }
+
+    for (long long seed = span.start; seed <= span.end; ++seed) {
+        const mcpe::WorldGenerator world(static_cast<std::int32_t>(seed));
+        printCount(world, perChunk);
+    }
     return 0;
 }
 

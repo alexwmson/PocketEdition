@@ -25,7 +25,13 @@ Count every diamond ore block in a seed:
 ```bash
 ./build/mcpe-census count 0
 ./build/mcpe-census count 0 --per-chunk
+./build/mcpe-census count --range 0-9
+./build/mcpe-census count --range 0-9 --per-chunk
 ```
+
+`--range` is inclusive and counts every seed in one process. Each seed is one
+JSON object on its own line, in the same shape as a single-seed count.
+Negative bounds keep their sign: `--range -10--1` or `--range -10..-1`.
 
 Export one chunk as 32,768 raw block-id bytes:
 
@@ -73,9 +79,10 @@ Ores, trees, and springs can write into adjacent chunks, and the original
 the same final blocks as a normal finite world, every command generates all
 16×16 real chunks in the original x-major traversal before reading results.
 
-On a typical desktop this takes a few seconds per seed. Reuse
-`mcpe::WorldGenerator` from `src/generator/WorldGenerator.h` when making
-multiple queries against one seed.
+On a typical desktop this takes a few seconds per seed. `count --range` still
+spends that time generating each world, but it initializes the runtime once
+and avoids starting a new process per seed. Reuse `mcpe::WorldGenerator` from
+`src/generator/WorldGenerator.h` when making multiple queries against one seed.
 
 ## Known behavior
 

@@ -64,4 +64,9 @@ if(BUILD_TESTING)
             "-DMCPE_CENSUS=$<TARGET_FILE:mcpe-census>"
             "-DOUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/seed0-chunk-2-0.bin"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_cli.cmake")
+    add_test(
+        NAME cli-range-test
+        COMMAND "${CMAKE_COMMAND}"
+            "-DMCPE_CENSUS=$<TARGET_FILE:mcpe-census>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_range.cmake")
 endif()
