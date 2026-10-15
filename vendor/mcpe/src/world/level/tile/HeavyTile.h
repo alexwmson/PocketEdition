@@ -10,7 +10,7 @@ class FallingTile;
 class HeavyTile: public Tile {
     typedef Tile super;
 public:
-    static bool instaFall;
+    static thread_local bool instaFall;
 
     HeavyTile(int id, int tex);
     HeavyTile(int id, int tex, const Material* material);

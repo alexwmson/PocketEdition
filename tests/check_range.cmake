@@ -77,3 +77,16 @@ endif()
 if(NOT type_error MATCHES "count --type expects")
     message(FATAL_ERROR "unexpected count-type error: ${type_error}")
 endif()
+
+execute_process(
+    COMMAND "${MCPE_CENSUS}" count --jobs 0
+    RESULT_VARIABLE jobs_result
+    ERROR_VARIABLE jobs_error)
+
+if(jobs_result EQUAL 0)
+    message(FATAL_ERROR "zero jobs should fail")
+endif()
+
+if(NOT jobs_error MATCHES "positive integer")
+    message(FATAL_ERROR "unexpected jobs error: ${jobs_error}")
+endif()

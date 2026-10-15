@@ -11,8 +11,7 @@ class LiquidTileDynamic: public LiquidTile
 	typedef LiquidTile super;
 public:
 	LiquidTileDynamic(int id, const Material* material)
-	:	super(id, material),
-		maxCount(0)
+	:	super(id, material)
 	{}
 
     void tick(Level* level, int x, int y, int z, Random* random) {
@@ -25,7 +24,7 @@ public:
         bool becomeStatic = true;
         if (depth > 0) {
             int highest = -100;
-            maxCount = 0;
+            flowScratch().maxCount = 0;
             highest = getHighest(level, x - 1, y, z, highest);
             highest = getHighest(level, x + 1, y, z, highest);
             highest = getHighest(level, x, y, z - 1, highest);
@@ -40,7 +39,7 @@ public:
                 if (above >= 8) newDepth = above;
                 else newDepth = above + 8;
             }
-            if (maxCount >= 2 && material == Material::water) {
+            if (flowScratch().maxCount >= 2 && material == Material::water) {
                 // Only spread spring if it's on top of an existing spring, or on top of solid ground.
                 if (level->isSolidBlockingTile(x, y - 1, z)) {
                     newDepth = 0;
@@ -94,7 +93,7 @@ public:
 	int getHighest(Level* level, int x, int y, int z, int current) {
         int d = getDepth(level, x, y, z);
         if (d < 0) return current;
-        if (d == 0) maxCount++;
+        if (d == 0) flowScratch().maxCount++;
         if (d >= 8) {
             d = 0;
         }
@@ -136,8 +135,9 @@ private:
     }
 
     bool* getSpread(Level* level, int x, int y, int z) {
+        FlowScratch& scratch = flowScratch();
         for (int d = 0; d < 4; d++) {
-            dist[d] = 1000;
+            scratch.dist[d] = 1000;
             int xx = x;
             int yy = y;
             int zz = z;
@@ -152,22 +152,22 @@ private:
                 continue;
             } else {
                 if (!isWaterBlocking(level, xx, yy - 1, zz)) {
-                    dist[d] = 0;
+                    scratch.dist[d] = 0;
                 } else {
-                    dist[d] = getSlopeDistance(level, xx, yy, zz, 1, d);
+                    scratch.dist[d] = getSlopeDistance(level, xx, yy, zz, 1, d);
                 }
             }
         }
 
-        int lowest = dist[0];
+        int lowest = scratch.dist[0];
         for (int d = 1; d < 4; d++) {
-            if (dist[d] < lowest) lowest = dist[d];
+            if (scratch.dist[d] < lowest) lowest = scratch.dist[d];
         }
 
         for (int d = 0; d < 4; d++) {
-            result[d] = dist[d] == lowest;
+            scratch.result[d] = scratch.dist[d] == lowest;
         }
-        return result;
+        return scratch.result;
     }
 
     void trySpreadTo(Level* level, int x, int y, int z, int neighbor) {
@@ -219,12 +219,36 @@ private:
         return lowest;
     }
 
-    int maxCount;
-
 	static const int NumDirections = 4;
 
-	bool result[NumDirections];
-    int dist[NumDirections];
+    struct FlowScratch {
+        int maxCount;
+        bool result[NumDirections];
+        int dist[NumDirections];
+    };
+
+    // Per thread, and still shared by nested ticks on that thread. A stack
+    // copy would stop a nested spring tick from clobbering its caller.
+    FlowScratch& flowScratch() {
+        struct Slot {
+            const LiquidTileDynamic* tile;
+            FlowScratch scratch;
+        };
+        thread_local Slot slots[4] = {};
+        for (int i = 0; i < 4; ++i) {
+            if (slots[i].tile == this) {
+                return slots[i].scratch;
+            }
+        }
+        for (int i = 0; i < 4; ++i) {
+            if (slots[i].tile == NULL) {
+                slots[i].tile = this;
+                return slots[i].scratch;
+            }
+        }
+        thread_local FlowScratch overflow = {};
+        return overflow;
+    }
 };
 
 #endif /*NET_MINECRAFT_WORLD_LEVEL_TILE__LiquidTileDynamic_H__*/

@@ -30,12 +30,14 @@ together:
 ./build/mcpe-census count --range 0-9
 ./build/mcpe-census count --range 0-9 --per-chunk
 ./build/mcpe-census count 0 --type watersprings
-./build/mcpe-census count --range 0-9 --type springs
+./build/mcpe-census count --range 0-9 --jobs 4 --type springs
 ```
 
-`--range` is inclusive and counts every seed in one process. Each seed is one
-JSON object on its own line, in the same shape as a single-seed count.
-Negative bounds keep their sign: `--range -10--1` or `--range -10..-1`.
+`--range` is inclusive. A worker pool generates those seeds at the same time,
+one world per worker, and prints one JSON object per line in seed order.
+`--jobs` sets the pool size and defaults to the machine's hardware
+concurrency. Negative bounds keep their sign: `--range -10--1` or
+`--range -10..-1`.
 
 Export one chunk as 32,768 raw block-id bytes:
 

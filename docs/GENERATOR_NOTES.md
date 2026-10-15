@@ -52,6 +52,10 @@ unchanged. The extraction makes these portability changes:
    lookups use the ids written by `SpringFeature`, `8` and `10`. Placements
    outside the finite world are not counted. The counters do not change the
    random stream or the blocks that are written.
+8. `HeavyTile::instaFall` and the flowing-liquid spread scratch are
+   thread-local. Nested ticks on the same thread still share that scratch,
+   matching the original spring flow. Separate seeds can therefore generate
+   at the same time. `count --range` uses one world per worker.
 
 ## Generation flow
 
@@ -100,7 +104,7 @@ chunk from a completed world.
 
 CTest covers MT19937 reference output, dimensions/indexing, finite boundary
 behavior, raw export size, coordinate scans, per-chunk/world count agreement,
-and fixed world goldens.
+fixed world goldens, and the same goldens while two seeds generate at once.
 
 Current regression values:
 

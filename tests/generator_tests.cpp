@@ -3,9 +3,12 @@
 #include "world/level/tile/Tile.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 
@@ -117,6 +120,47 @@ int main() {
                "seed -1 lava spring golden count changed");
         expect(negativeWorld.chunkHash(0, 0) == UINT64_C(5653855523172728039),
                "seed -1 chunk hash changed");
+
+        std::uint64_t parallelHash0 = 0;
+        std::uint64_t parallelHash1 = 0;
+        std::size_t parallelDiamonds0 = 0;
+        std::size_t parallelDiamonds1 = 0;
+        std::exception_ptr parallelError0;
+        std::exception_ptr parallelError1;
+        std::thread seed0Thread([&]() {
+            try {
+                const mcpe::WorldGenerator parallelWorld(0);
+                parallelHash0 = parallelWorld.chunkHash(0, 0);
+                parallelDiamonds0 = parallelWorld.countDiamonds();
+            } catch (...) {
+                parallelError0 = std::current_exception();
+            }
+        });
+        std::thread seed1Thread([&]() {
+            try {
+                const mcpe::WorldGenerator parallelWorld(-1);
+                parallelHash1 = parallelWorld.chunkHash(0, 0);
+                parallelDiamonds1 = parallelWorld.countDiamonds();
+            } catch (...) {
+                parallelError1 = std::current_exception();
+            }
+        });
+        seed0Thread.join();
+        seed1Thread.join();
+        if (parallelError0) {
+            std::rethrow_exception(parallelError0);
+        }
+        if (parallelError1) {
+            std::rethrow_exception(parallelError1);
+        }
+        expect(parallelHash0 == UINT64_C(16926736103667789954),
+               "concurrent seed 0 chunk hash changed");
+        expect(parallelDiamonds0 == 1055,
+               "concurrent seed 0 diamond count changed");
+        expect(parallelHash1 == UINT64_C(5653855523172728039),
+               "concurrent seed -1 chunk hash changed");
+        expect(parallelDiamonds1 == 1033,
+               "concurrent seed -1 diamond count changed");
     } catch (const std::exception& error) {
         std::cerr << "test failure: " << error.what() << '\n';
         return EXIT_FAILURE;

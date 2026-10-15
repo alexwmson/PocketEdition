@@ -3,7 +3,7 @@
 #include "../material/Material.h"
 #include "../../entity/item/FallingTile.h"
 
-bool HeavyTile::instaFall = false;
+thread_local bool HeavyTile::instaFall = false;
 
 HeavyTile::HeavyTile( int id, int tex )
 :   super(id, tex, Material::sand)

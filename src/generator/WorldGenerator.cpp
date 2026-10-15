@@ -21,7 +21,6 @@ namespace mcpe {
 namespace {
 
 std::once_flag runtimeInitFlag;
-std::mutex generationMutex;
 
 void initializeLegacyRuntime() {
     Mth::initMth();
@@ -55,7 +54,6 @@ struct WorldGenerator::Impl {
 WorldGenerator::WorldGenerator(std::int32_t seed)
     : impl_(), outsideChunk_() {
     std::call_once(runtimeInitFlag, initializeLegacyRuntime);
-    std::lock_guard<std::mutex> lock(generationMutex);
 
     outsideChunk_.fill(kOutsideWorldId);
     impl_.reset(new Impl(seed));

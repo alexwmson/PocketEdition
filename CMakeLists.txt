@@ -46,7 +46,7 @@ endif()
 
 if(UNIX)
     find_package(Threads REQUIRED)
-    target_link_libraries(mcpe-generator PRIVATE Threads::Threads)
+    target_link_libraries(mcpe-generator PUBLIC Threads::Threads)
 endif()
 
 include(CTest)

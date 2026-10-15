@@ -5,10 +5,14 @@
 #include <climits>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <iostream>
+#include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -18,13 +22,15 @@ void usage(std::ostream& output) {
         << "MCPE 0.6.1 finite-world generator\n"
         << "usage:\n"
         << "  mcpe-census count <seed> [--type <kind>] [--per-chunk]\n"
-        << "  mcpe-census count --range <start>-<end> [--type <kind>] [--per-chunk]\n"
+        << "  mcpe-census count --range <start>-<end> [--jobs <n>] [--type <kind>] [--per-chunk]\n"
         << "  mcpe-census chunk <seed> <chunk-x> <chunk-z> [--output <file>]\n"
         << "  mcpe-census diamonds <seed> [<chunk-x> <chunk-z>]\n"
         << "\n"
-        << "Seeds are signed 32-bit integers. A count range is inclusive and\n"
-        << "runs in one process, printing one JSON object per seed. Negative\n"
-        << "bounds keep their sign, for example -10--1 or -10..-1.\n"
+        << "Seeds are signed 32-bit integers. A count range is inclusive.\n"
+        << "Workers generate those seeds at the same time, one world each, and\n"
+        << "results still print in seed order. --jobs defaults to the machine's\n"
+        << "hardware concurrency. Negative bounds keep their sign, for example\n"
+        << "-10--1 or -10..-1.\n"
         << "Count kind defaults to diamonds. Other kinds are watersprings,\n"
         << "lavasprings, and springs (water plus lava). Spring counts are\n"
         << "successful placements, not liquid blocks left after flow.\n"
@@ -192,59 +198,153 @@ std::string jsonString(const std::string& value) {
     return result;
 }
 
-void printChunkCounts(const mcpe::WorldGenerator& world, CountKind kind) {
-    std::cout << ",\"chunks\":[";
+void printChunkCounts(std::ostream& output, const mcpe::WorldGenerator& world, CountKind kind) {
+    output << ",\"chunks\":[";
     bool first = true;
     for (int z = 0; z < mcpe::WorldGenerator::kWorldChunks; ++z) {
         for (int x = 0; x < mcpe::WorldGenerator::kWorldChunks; ++x) {
             if (!first) {
-                std::cout << ',';
+                output << ',';
             }
             first = false;
-            std::cout << "{\"x\":" << x << ",\"z\":" << z;
+            output << "{\"x\":" << x << ",\"z\":" << z;
             if (kind == CountSprings) {
                 const std::size_t water = world.count(
                     mcpe::WorldGenerator::kWaterSpringId, x, z);
                 const std::size_t lava = world.count(
                     mcpe::WorldGenerator::kLavaSpringId, x, z);
-                std::cout << ",\"springs\":" << (water + lava)
-                          << ",\"watersprings\":" << water
-                          << ",\"lavasprings\":" << lava;
+                output << ",\"springs\":" << (water + lava)
+                       << ",\"watersprings\":" << water
+                       << ",\"lavasprings\":" << lava;
             } else {
-                std::cout << ",\"" << countField(kind) << "\":"
-                          << tally(world, kind, x, z);
+                output << ",\"" << countField(kind) << "\":"
+                       << tally(world, kind, x, z);
             }
-            std::cout << '}';
+            output << '}';
         }
     }
-    std::cout << ']';
+    output << ']';
 }
 
-void printCount(const mcpe::WorldGenerator& world, CountKind kind, bool perChunk) {
-    std::cout << "{\"version\":\"0.6.1\",\"seed\":" << world.seed();
+void printCount(std::ostream& output, const mcpe::WorldGenerator& world, CountKind kind, bool perChunk) {
+    output << "{\"version\":\"0.6.1\",\"seed\":" << world.seed();
     if (kind == CountDiamonds) {
-        std::cout << ",\"diamond_block_id\":"
-                  << static_cast<int>(mcpe::WorldGenerator::kDiamondOreId);
+        output << ",\"diamond_block_id\":"
+               << static_cast<int>(mcpe::WorldGenerator::kDiamondOreId);
     } else {
-        std::cout << ",\"type\":" << jsonString(countField(kind));
+        output << ",\"type\":" << jsonString(countField(kind));
         if (kind == CountWaterSprings) {
-            std::cout << ",\"block_id\":"
-                      << static_cast<int>(mcpe::WorldGenerator::kWaterSpringId);
+            output << ",\"block_id\":"
+                   << static_cast<int>(mcpe::WorldGenerator::kWaterSpringId);
         } else if (kind == CountLavaSprings) {
-            std::cout << ",\"block_id\":"
-                      << static_cast<int>(mcpe::WorldGenerator::kLavaSpringId);
+            output << ",\"block_id\":"
+                   << static_cast<int>(mcpe::WorldGenerator::kLavaSpringId);
         } else {
-            std::cout << ",\"watersprings\":"
-                      << world.count(mcpe::WorldGenerator::kWaterSpringId)
-                      << ",\"lavasprings\":"
-                      << world.count(mcpe::WorldGenerator::kLavaSpringId);
+            output << ",\"watersprings\":"
+                   << world.count(mcpe::WorldGenerator::kWaterSpringId)
+                   << ",\"lavasprings\":"
+                   << world.count(mcpe::WorldGenerator::kLavaSpringId);
         }
     }
-    std::cout << ",\"" << countField(kind) << "\":" << tally(world, kind);
+    output << ",\"" << countField(kind) << "\":" << tally(world, kind);
     if (perChunk) {
-        printChunkCounts(world, kind);
+        printChunkCounts(output, world, kind);
     }
-    std::cout << "}\n" << std::flush;
+    output << "}\n";
+}
+
+void generateCount(std::ostream& output, std::int32_t seed, CountKind kind, bool perChunk) {
+    const mcpe::WorldGenerator world(seed);
+    printCount(output, world, kind, perChunk);
+}
+
+unsigned workerCount(unsigned requested, unsigned long long seeds) {
+    unsigned count = requested;
+    if (count == 0) {
+        count = std::thread::hardware_concurrency();
+    }
+    if (count == 0) {
+        count = 1;
+    }
+    if (static_cast<unsigned long long>(count) > seeds) {
+        count = static_cast<unsigned>(seeds);
+    }
+    return count;
+}
+
+void runSeeds(SeedSpan span, CountKind kind, bool perChunk, unsigned jobs) {
+    const unsigned long long total = static_cast<unsigned long long>(
+        static_cast<long long>(span.end) - static_cast<long long>(span.start)) + 1;
+    jobs = workerCount(jobs, total);
+    if (jobs <= 1) {
+        for (long long seed = span.start; seed <= span.end; ++seed) {
+            generateCount(std::cout, static_cast<std::int32_t>(seed), kind, perChunk);
+            std::cout << std::flush;
+        }
+        return;
+    }
+
+    struct Slot {
+        bool ready;
+        std::string line;
+        std::exception_ptr error;
+    };
+    std::vector<Slot> slots(static_cast<std::size_t>(total));
+    std::mutex mutex;
+    std::size_t nextAssign = 0;
+    std::size_t nextPrint = 0;
+    bool stop = false;
+
+    std::vector<std::thread> threads;
+    threads.reserve(jobs);
+    for (unsigned worker = 0; worker < jobs; ++worker) {
+        threads.push_back(std::thread([&]() {
+            for (;;) {
+                std::size_t index = 0;
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (stop || nextAssign >= slots.size()) {
+                        return;
+                    }
+                    index = nextAssign++;
+                }
+
+                const std::int32_t seed = static_cast<std::int32_t>(
+                    static_cast<long long>(span.start) + static_cast<long long>(index));
+                std::string line;
+                std::exception_ptr error;
+                try {
+                    std::ostringstream buffer;
+                    generateCount(buffer, seed, kind, perChunk);
+                    line = buffer.str();
+                } catch (...) {
+                    error = std::current_exception();
+                }
+
+                std::lock_guard<std::mutex> lock(mutex);
+                slots[index].error = error;
+                if (error) {
+                    stop = true;
+                } else {
+                    slots[index].line.swap(line);
+                }
+                slots[index].ready = true;
+                while (nextPrint < slots.size() &&
+                       slots[nextPrint].ready &&
+                       !slots[nextPrint].error) {
+                    std::cout << slots[nextPrint].line << std::flush;
+                    slots[nextPrint].line.clear();
+                    ++nextPrint;
+                }
+            }
+        }));
+    }
+    for (std::size_t i = 0; i < threads.size(); ++i) {
+        threads[i].join();
+    }
+    if (nextPrint < slots.size() && slots[nextPrint].error) {
+        std::rethrow_exception(slots[nextPrint].error);
+    }
 }
 
 int runCount(int argc, char** argv) {
@@ -252,6 +352,8 @@ int runCount(int argc, char** argv) {
     bool sawSeed = false;
     bool sawRange = false;
     bool sawType = false;
+    bool sawJobs = false;
+    unsigned jobs = 0;
     CountKind kind = CountDiamonds;
     SeedSpan span = {0, 0};
 
@@ -262,6 +364,31 @@ int runCount(int argc, char** argv) {
                 throw std::invalid_argument("count received --per-chunk twice");
             }
             perChunk = true;
+            continue;
+        }
+
+        std::string jobsSpec;
+        if (arg == "--jobs") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument("count --jobs expects a positive integer");
+            }
+            jobsSpec = argv[++i];
+        } else if (arg.compare(0, 7, "--jobs=") == 0) {
+            jobsSpec = arg.substr(7);
+        }
+        if (arg == "--jobs" || arg.compare(0, 7, "--jobs=") == 0) {
+            if (sawJobs) {
+                throw std::invalid_argument("count received --jobs twice");
+            }
+            if (jobsSpec.empty()) {
+                throw std::invalid_argument("count --jobs expects a positive integer");
+            }
+            const long long value = parseInteger(jobsSpec.c_str(), "jobs");
+            if (value < 1 || value > UINT_MAX) {
+                throw std::out_of_range("jobs must be a positive integer");
+            }
+            jobs = static_cast<unsigned>(value);
+            sawJobs = true;
             continue;
         }
 
@@ -324,10 +451,7 @@ int runCount(int argc, char** argv) {
             "count expects <seed> [--type <kind>] [--per-chunk] or --range <start>-<end>");
     }
 
-    for (long long seed = span.start; seed <= span.end; ++seed) {
-        const mcpe::WorldGenerator world(static_cast<std::int32_t>(seed));
-        printCount(world, kind, perChunk);
-    }
+    runSeeds(span, kind, perChunk, jobs);
     return 0;
 }
 
