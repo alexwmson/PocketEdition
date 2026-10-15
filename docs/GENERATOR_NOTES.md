@@ -40,13 +40,18 @@ unchanged. The extraction makes these portability changes:
 3. Legacy logging is disabled so stdout remains valid JSON.
 4. An in-memory Creative `Level` is used. Creative disables post-generation
    mob spawning; terrain and block population are the same.
-5. The wrapper exposes read-only chunk bytes, hashes, diamond counts, and
+5. The wrapper exposes read-only chunk bytes, hashes, placement counts, and
    diamond coordinates.
 6. Chunk population continues through the lava spring. Lapis, trees, flowers,
    reeds, and cacti stay in front of the springs because they consume the
    population stream and edit the blocks a spring is allowed to replace.
    Snow and mobs are still omitted. Cave, canyon, dungeon, and lake features
    are not part of this generator.
+7. Successful ore and spring writes increment a per-level counter array
+   indexed by tile id. Diamond lookups use id `56`. Water and lava spring
+   lookups use the ids written by `SpringFeature`, `8` and `10`. Placements
+   outside the finite world are not counted. The counters do not change the
+   random stream or the blocks that are written.
 
 ## Generation flow
 
@@ -60,7 +65,9 @@ For each seed:
 5. Once the southeast-neighbor gate is satisfied, `postProcess` adds clay,
    ore veins through diamond, then lapis, vegetation, and water and lava
    springs.
-6. Scan final chunk bytes for id `56`.
+6. Read the placement counters filled while ores and springs were written.
+   A diamond total is the id `56` counter. Tests still compare it with a
+   scan of the finished chunks.
 
 The `ChunkCache` gate requires `(x+1,z)`, `(x,z+1)`, and `(x+1,z+1)`.
 Population features use world coordinates and can cross a chunk boundary.
@@ -97,10 +104,10 @@ and fixed world goldens.
 
 Current regression values:
 
-- Seed `0`: 1,055 diamond blocks; chunk `(0,0)` FNV-1a hash
-  `16926736103667789954`.
-- Seed `-1`: 1,033 diamond blocks; chunk `(0,0)` FNV-1a hash
-  `5653855523172728039`.
+- Seed `0`: 1,055 diamond blocks, 2 water springs, 0 lava springs; chunk
+  `(0,0)` FNV-1a hash `16926736103667789954`.
+- Seed `-1`: 1,033 diamond blocks, 0 water springs, 0 lava springs; chunk
+  `(0,0)` FNV-1a hash `5653855523172728039`.
 
 Seed `0` was also compared before and after extraction against a build directly
 from `SourceCode/handheld`; both produced 1,055 diamond blocks. The chunk

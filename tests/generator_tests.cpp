@@ -1,5 +1,6 @@
 #include "generator/WorldGenerator.h"
 #include "util/Random.h"
+#include "world/level/tile/Tile.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -40,8 +41,39 @@ int main() {
                    mcpe::WorldGenerator::kOutsideWorldId) ==
                    static_cast<std::ptrdiff_t>(mcpe::WorldGenerator::kChunkBlockCount),
                "padding chunks must use invisible bedrock");
+        expect(Tile::emeraldOre->id == mcpe::WorldGenerator::kDiamondOreId,
+               "diamond counter id must be emeraldOre");
+        expect(Tile::water->id == mcpe::WorldGenerator::kWaterSpringId,
+               "water spring counter id must be flowing water");
+        expect(Tile::lava->id == mcpe::WorldGenerator::kLavaSpringId,
+               "lava spring counter id must be flowing lava");
+
+        std::size_t scannedDiamonds = 0;
+        std::size_t waterSprings = 0;
+        std::size_t lavaSprings = 0;
+        for (int z = 0; z < mcpe::WorldGenerator::kWorldChunks; ++z) {
+            for (int x = 0; x < mcpe::WorldGenerator::kWorldChunks; ++x) {
+                const std::uint8_t* blocks = world.chunkData(x, z);
+                scannedDiamonds += static_cast<std::size_t>(std::count(
+                    blocks,
+                    blocks + mcpe::WorldGenerator::kChunkBlockCount,
+                    mcpe::WorldGenerator::kDiamondOreId));
+                waterSprings += world.count(mcpe::WorldGenerator::kWaterSpringId, x, z);
+                lavaSprings += world.count(mcpe::WorldGenerator::kLavaSpringId, x, z);
+            }
+        }
+        expect(scannedDiamonds == world.count(mcpe::WorldGenerator::kDiamondOreId),
+               "diamond placement counter must match the block scan");
         expect(world.countDiamonds() == 1055,
                "seed 0 diamond golden count changed");
+        expect(waterSprings == world.count(mcpe::WorldGenerator::kWaterSpringId),
+               "water spring world count must equal per-chunk sum");
+        expect(lavaSprings == world.count(mcpe::WorldGenerator::kLavaSpringId),
+               "lava spring world count must equal per-chunk sum");
+        expect(world.count(mcpe::WorldGenerator::kWaterSpringId) == 2,
+               "seed 0 water spring golden count changed");
+        expect(world.count(mcpe::WorldGenerator::kLavaSpringId) == 0,
+               "seed 0 lava spring golden count changed");
         expect(world.chunkHash(0, 0) == UINT64_C(16926736103667789954),
                "seed 0 chunk hash changed");
         expect(world.chunkHash(2, 0) == UINT64_C(12054506634790722117),
@@ -70,9 +102,19 @@ int main() {
                    "diamond z coordinate is outside the finite world");
         }
 
+        const std::size_t seed0Water = world.count(mcpe::WorldGenerator::kWaterSpringId);
+        const std::size_t seed0Lava = world.count(mcpe::WorldGenerator::kLavaSpringId);
         const mcpe::WorldGenerator negativeWorld(-1);
+        expect(world.count(mcpe::WorldGenerator::kWaterSpringId) == seed0Water,
+               "seed 0 water spring count changed while generating another seed");
+        expect(world.count(mcpe::WorldGenerator::kLavaSpringId) == seed0Lava,
+               "seed 0 lava spring count changed while generating another seed");
         expect(negativeWorld.countDiamonds() == 1033,
                "seed -1 diamond golden count changed");
+        expect(negativeWorld.count(mcpe::WorldGenerator::kWaterSpringId) == 0,
+               "seed -1 water spring golden count changed");
+        expect(negativeWorld.count(mcpe::WorldGenerator::kLavaSpringId) == 0,
+               "seed -1 lava spring golden count changed");
         expect(negativeWorld.chunkHash(0, 0) == UINT64_C(5653855523172728039),
                "seed -1 chunk hash changed");
     } catch (const std::exception& error) {

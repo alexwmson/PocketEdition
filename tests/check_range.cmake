@@ -64,3 +64,16 @@ endif()
 if(NOT both_error MATCHES "more than one seed range")
     message(FATAL_ERROR "unexpected combined-seed error: ${both_error}")
 endif()
+
+execute_process(
+    COMMAND "${MCPE_CENSUS}" count --type ponds 0
+    RESULT_VARIABLE type_result
+    ERROR_VARIABLE type_error)
+
+if(type_result EQUAL 0)
+    message(FATAL_ERROR "unknown count type should fail")
+endif()
+
+if(NOT type_error MATCHES "count --type expects")
+    message(FATAL_ERROR "unexpected count-type error: ${type_error}")
+endif()

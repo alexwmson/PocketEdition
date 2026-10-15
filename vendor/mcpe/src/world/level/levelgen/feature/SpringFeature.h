@@ -37,7 +37,9 @@ public:
         if (level->isEmptyTile(x, y, z + 1)) holeCount++;
 
         if (rockCount == 3 && holeCount == 1) {
-            level->setTile(x, y, z, tile);
+            if (level->setTile(x, y, z, tile)) {
+                level->recordPlacement(tile, x, y, z);
+            }
             level->instaTick = true;
             Tile::tiles[tile]->tick(level, x, y, z, random);
             level->instaTick = false;

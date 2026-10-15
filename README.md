@@ -20,13 +20,17 @@ required.
 
 ## Commands
 
-Count every diamond ore block in a seed:
+Count placements in a seed. The default kind is diamonds. `watersprings` and
+`lavasprings` count successful spring placements, and `springs` adds those
+together:
 
 ```bash
 ./build/mcpe-census count 0
 ./build/mcpe-census count 0 --per-chunk
 ./build/mcpe-census count --range 0-9
 ./build/mcpe-census count --range 0-9 --per-chunk
+./build/mcpe-census count 0 --type watersprings
+./build/mcpe-census count --range 0-9 --type springs
 ```
 
 `--range` is inclusive and counts every seed in one process. Each seed is one
@@ -99,7 +103,15 @@ and avoids starting a new process per seed. Reuse `mcpe::WorldGenerator` from
   1,033 diamond blocks.
 - Diamond generation makes one size-7 ore-feature attempt per populated
   chunk, anchored at `y = 0..15`; resulting vein blocks can extend slightly
-  higher and across chunk boundaries.
+  higher and across chunk boundaries. The diamond total is the number of
+  those blocks recorded as they replace stone, looked up by tile id `56`.
+- Water and lava spring totals are also recorded at placement, under tile
+  ids `8` and `10`. Each populated chunk attempts 50 water springs and 20
+  lava springs, and only a stone pocket with three stone sides and one open
+  side is counted. Flowing liquid left behind by the spring tick is not
+  counted again. Ocean water is not a spring. Seed `0` has 2 water springs
+  and no lava springs. Seed `-1` has neither. Caves are not generated, so
+  almost no stone pocket has exactly one open side.
 - Writes outside the finite 256×256 world are discarded by the original empty
   boundary chunk.
 - Generation uses the source's MT19937 RNG, not Java Edition's LCG.

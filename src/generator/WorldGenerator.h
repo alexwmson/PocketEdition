@@ -22,7 +22,10 @@ public:
     static const int kWorldHeight = 128;
     static const std::size_t kChunkBlockCount =
         kChunkWidth * kChunkWidth * kWorldHeight;
+    static const int kTileIdCount = 256;
     static const std::uint8_t kDiamondOreId = 56;
+    static const std::uint8_t kWaterSpringId = 8;
+    static const std::uint8_t kLavaSpringId = 10;
     static const std::uint8_t kOutsideWorldId = 95;
 
     explicit WorldGenerator(std::int32_t seed);
@@ -34,6 +37,8 @@ public:
     std::int32_t seed() const;
     bool isGeneratedChunk(int chunkX, int chunkZ) const;
     const std::uint8_t* chunkData(int chunkX, int chunkZ) const;
+    std::size_t count(int tileId) const;
+    std::size_t count(int tileId, int chunkX, int chunkZ) const;
     std::size_t countDiamonds() const;
     std::size_t countDiamonds(int chunkX, int chunkZ) const;
     std::vector<DiamondBlock> diamonds() const;

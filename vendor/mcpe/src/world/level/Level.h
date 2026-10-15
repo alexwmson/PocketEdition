@@ -98,6 +98,13 @@ public:
 	int getTile(int x, int y, int z);
     bool setTile(int x, int y, int z, int tile);
 
+    // Census tallies successful in-world placements by tile id. Generation
+    // order and block results are unchanged.
+    static const int PLACEMENT_IDS = 256;
+    void recordPlacement(int tileId, int x, int y, int z);
+    int placementCount(int tileId) const;
+    int placementCount(int tileId, int chunkX, int chunkZ) const;
+
 	bool hasChunkAt(int x, int y, int z);
     bool hasChunksAt(int x, int y, int z, int r);
     bool hasChunksAt(int x0, int y0, int z0, int x1, int y1, int z1);
@@ -339,6 +346,9 @@ private:
 
 	float _lastSavedPlayerTime;
 	PendingList _pendingPlayerRemovals;
+
+    int _placementCounts[PLACEMENT_IDS];
+    int _placementChunkCounts[CHUNK_CACHE_WIDTH][CHUNK_CACHE_WIDTH][PLACEMENT_IDS];
 };
 
 #endif /*NET_MINECRAFT_WORLD_LEVEL__Level_H__*/

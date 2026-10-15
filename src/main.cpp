@@ -17,16 +17,85 @@ void usage(std::ostream& output) {
     output
         << "MCPE 0.6.1 finite-world generator\n"
         << "usage:\n"
-        << "  mcpe-census count <seed> [--per-chunk]\n"
-        << "  mcpe-census count --range <start>-<end> [--per-chunk]\n"
+        << "  mcpe-census count <seed> [--type <kind>] [--per-chunk]\n"
+        << "  mcpe-census count --range <start>-<end> [--type <kind>] [--per-chunk]\n"
         << "  mcpe-census chunk <seed> <chunk-x> <chunk-z> [--output <file>]\n"
         << "  mcpe-census diamonds <seed> [<chunk-x> <chunk-z>]\n"
         << "\n"
         << "Seeds are signed 32-bit integers. A count range is inclusive and\n"
         << "runs in one process, printing one JSON object per seed. Negative\n"
         << "bounds keep their sign, for example -10--1 or -10..-1.\n"
+        << "Count kind defaults to diamonds. Other kinds are watersprings,\n"
+        << "lavasprings, and springs (water plus lava). Spring counts are\n"
+        << "successful placements, not liquid blocks left after flow.\n"
         << "Queryable chunk coordinates are 0..25; only 0..15 contain\n"
         << "generated MCPE finite-world terrain.\n";
+}
+
+enum CountKind {
+    CountDiamonds,
+    CountWaterSprings,
+    CountLavaSprings,
+    CountSprings
+};
+
+CountKind parseCountKind(const std::string& text) {
+    if (text == "diamonds") {
+        return CountDiamonds;
+    }
+    if (text == "watersprings") {
+        return CountWaterSprings;
+    }
+    if (text == "lavasprings") {
+        return CountLavaSprings;
+    }
+    if (text == "springs") {
+        return CountSprings;
+    }
+    throw std::invalid_argument(
+        "count --type expects diamonds, watersprings, lavasprings, or springs");
+}
+
+const char* countField(CountKind kind) {
+    if (kind == CountWaterSprings) {
+        return "watersprings";
+    }
+    if (kind == CountLavaSprings) {
+        return "lavasprings";
+    }
+    if (kind == CountSprings) {
+        return "springs";
+    }
+    return "diamonds";
+}
+
+int countTileId(CountKind kind) {
+    if (kind == CountWaterSprings) {
+        return mcpe::WorldGenerator::kWaterSpringId;
+    }
+    if (kind == CountLavaSprings) {
+        return mcpe::WorldGenerator::kLavaSpringId;
+    }
+    if (kind == CountSprings) {
+        return -1;
+    }
+    return mcpe::WorldGenerator::kDiamondOreId;
+}
+
+std::size_t tally(const mcpe::WorldGenerator& world, CountKind kind) {
+    if (kind == CountSprings) {
+        return world.count(mcpe::WorldGenerator::kWaterSpringId) +
+               world.count(mcpe::WorldGenerator::kLavaSpringId);
+    }
+    return world.count(countTileId(kind));
+}
+
+std::size_t tally(const mcpe::WorldGenerator& world, CountKind kind, int chunkX, int chunkZ) {
+    if (kind == CountSprings) {
+        return world.count(mcpe::WorldGenerator::kWaterSpringId, chunkX, chunkZ) +
+               world.count(mcpe::WorldGenerator::kLavaSpringId, chunkX, chunkZ);
+    }
+    return world.count(countTileId(kind), chunkX, chunkZ);
 }
 
 struct SeedSpan {
@@ -123,7 +192,7 @@ std::string jsonString(const std::string& value) {
     return result;
 }
 
-void printChunkCounts(const mcpe::WorldGenerator& world) {
+void printChunkCounts(const mcpe::WorldGenerator& world, CountKind kind) {
     std::cout << ",\"chunks\":[";
     bool first = true;
     for (int z = 0; z < mcpe::WorldGenerator::kWorldChunks; ++z) {
@@ -132,21 +201,48 @@ void printChunkCounts(const mcpe::WorldGenerator& world) {
                 std::cout << ',';
             }
             first = false;
-            std::cout << "{\"x\":" << x
-                      << ",\"z\":" << z
-                      << ",\"diamonds\":" << world.countDiamonds(x, z)
-                      << '}';
+            std::cout << "{\"x\":" << x << ",\"z\":" << z;
+            if (kind == CountSprings) {
+                const std::size_t water = world.count(
+                    mcpe::WorldGenerator::kWaterSpringId, x, z);
+                const std::size_t lava = world.count(
+                    mcpe::WorldGenerator::kLavaSpringId, x, z);
+                std::cout << ",\"springs\":" << (water + lava)
+                          << ",\"watersprings\":" << water
+                          << ",\"lavasprings\":" << lava;
+            } else {
+                std::cout << ",\"" << countField(kind) << "\":"
+                          << tally(world, kind, x, z);
+            }
+            std::cout << '}';
         }
     }
     std::cout << ']';
 }
 
-void printCount(const mcpe::WorldGenerator& world, bool perChunk) {
-    std::cout << "{\"version\":\"0.6.1\",\"seed\":" << world.seed()
-              << ",\"diamond_block_id\":56"
-              << ",\"diamonds\":" << world.countDiamonds();
+void printCount(const mcpe::WorldGenerator& world, CountKind kind, bool perChunk) {
+    std::cout << "{\"version\":\"0.6.1\",\"seed\":" << world.seed();
+    if (kind == CountDiamonds) {
+        std::cout << ",\"diamond_block_id\":"
+                  << static_cast<int>(mcpe::WorldGenerator::kDiamondOreId);
+    } else {
+        std::cout << ",\"type\":" << jsonString(countField(kind));
+        if (kind == CountWaterSprings) {
+            std::cout << ",\"block_id\":"
+                      << static_cast<int>(mcpe::WorldGenerator::kWaterSpringId);
+        } else if (kind == CountLavaSprings) {
+            std::cout << ",\"block_id\":"
+                      << static_cast<int>(mcpe::WorldGenerator::kLavaSpringId);
+        } else {
+            std::cout << ",\"watersprings\":"
+                      << world.count(mcpe::WorldGenerator::kWaterSpringId)
+                      << ",\"lavasprings\":"
+                      << world.count(mcpe::WorldGenerator::kLavaSpringId);
+        }
+    }
+    std::cout << ",\"" << countField(kind) << "\":" << tally(world, kind);
     if (perChunk) {
-        printChunkCounts(world);
+        printChunkCounts(world, kind);
     }
     std::cout << "}\n" << std::flush;
 }
@@ -155,6 +251,8 @@ int runCount(int argc, char** argv) {
     bool perChunk = false;
     bool sawSeed = false;
     bool sawRange = false;
+    bool sawType = false;
+    CountKind kind = CountDiamonds;
     SeedSpan span = {0, 0};
 
     for (int i = 2; i < argc; ++i) {
@@ -164,6 +262,29 @@ int runCount(int argc, char** argv) {
                 throw std::invalid_argument("count received --per-chunk twice");
             }
             perChunk = true;
+            continue;
+        }
+
+        std::string typeSpec;
+        if (arg == "--type") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    "count --type expects diamonds, watersprings, lavasprings, or springs");
+            }
+            typeSpec = argv[++i];
+        } else if (arg.compare(0, 7, "--type=") == 0) {
+            typeSpec = arg.substr(7);
+        }
+        if (arg == "--type" || arg.compare(0, 7, "--type=") == 0) {
+            if (sawType) {
+                throw std::invalid_argument("count received --type twice");
+            }
+            if (typeSpec.empty()) {
+                throw std::invalid_argument(
+                    "count --type expects diamonds, watersprings, lavasprings, or springs");
+            }
+            kind = parseCountKind(typeSpec);
+            sawType = true;
             continue;
         }
 
@@ -180,7 +301,7 @@ int runCount(int argc, char** argv) {
         } else {
             if (sawSeed || sawRange) {
                 throw std::invalid_argument(
-                    "count expects <seed> [--per-chunk] or --range <start>-<end> [--per-chunk]");
+                    "count expects <seed> [--type <kind>] [--per-chunk] or --range <start>-<end>");
             }
             span.start = parseSeed(argv[i]);
             span.end = span.start;
@@ -200,12 +321,12 @@ int runCount(int argc, char** argv) {
 
     if (!sawSeed && !sawRange) {
         throw std::invalid_argument(
-            "count expects <seed> [--per-chunk] or --range <start>-<end> [--per-chunk]");
+            "count expects <seed> [--type <kind>] [--per-chunk] or --range <start>-<end>");
     }
 
     for (long long seed = span.start; seed <= span.end; ++seed) {
         const mcpe::WorldGenerator world(static_cast<std::int32_t>(seed));
-        printCount(world, perChunk);
+        printCount(world, kind, perChunk);
     }
     return 0;
 }

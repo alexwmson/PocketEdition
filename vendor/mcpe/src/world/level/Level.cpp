@@ -1,4 +1,6 @@
 #include "Level.h"
+
+#include <cstring>
 #include "LevelListener.h"
 #include "tile/entity/TileEntity.h"
 #include "../entity/player/Player.h"
@@ -81,6 +83,8 @@ Level::~Level() {
 }
 
 void Level::_init(const std::string& levelName, const LevelSettings& settings, int generatorVersion, Dimension* fixedDimension) {
+	std::memset(_placementCounts, 0, sizeof(_placementCounts));
+	std::memset(_placementChunkCounts, 0, sizeof(_placementChunkCounts));
 
 	isGeneratingTerrain = false;
 
@@ -574,6 +578,24 @@ bool Level::setTileAndDataNoUpdate(int x, int y, int z, int tile, int data) {
     if (y >= DEPTH) return false;
     LevelChunk* c = getChunk(x >> 4, z >> 4);
     return c->setTileAndData(x & 15, y, z & 15, tile, data);
+}
+
+void Level::recordPlacement(int tileId, int x, int y, int z) {
+	if (tileId < 0 || tileId >= PLACEMENT_IDS || !inRange(x, y, z)) return;
+	++_placementCounts[tileId];
+	++_placementChunkCounts[x >> 4][z >> 4][tileId];
+}
+
+int Level::placementCount(int tileId) const {
+	if (tileId < 0 || tileId >= PLACEMENT_IDS) return 0;
+	return _placementCounts[tileId];
+}
+
+int Level::placementCount(int tileId, int chunkX, int chunkZ) const {
+	if (tileId < 0 || tileId >= PLACEMENT_IDS) return 0;
+	if (chunkX < 0 || chunkZ < 0 ||
+		chunkX >= CHUNK_CACHE_WIDTH || chunkZ >= CHUNK_CACHE_WIDTH) return 0;
+	return _placementChunkCounts[chunkX][chunkZ][tileId];
 }
 
 bool Level::setTileNoUpdate(int x, int y, int z, int tile) {

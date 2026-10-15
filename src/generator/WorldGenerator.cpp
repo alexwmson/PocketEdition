@@ -1,6 +1,5 @@
 #include "generator/WorldGenerator.h"
 
-#include <algorithm>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -114,20 +113,31 @@ std::size_t WorldGenerator::blockIndex(int localX, int y, int localZ) {
     return static_cast<std::size_t>((localX << 11) | (localZ << 7) | y);
 }
 
-std::size_t WorldGenerator::countDiamonds(int chunkX, int chunkZ) const {
-    const std::uint8_t* blocks = chunkData(chunkX, chunkZ);
+std::size_t WorldGenerator::count(int tileId) const {
+    if (tileId < 0 || tileId >= kTileIdCount) {
+        throw std::out_of_range("tile id must be in range 0..255");
+    }
+    return static_cast<std::size_t>(impl_->level->placementCount(tileId));
+}
+
+std::size_t WorldGenerator::count(int tileId, int chunkX, int chunkZ) const {
+    validateQueryableChunk(chunkX, chunkZ);
+    if (tileId < 0 || tileId >= kTileIdCount) {
+        throw std::out_of_range("tile id must be in range 0..255");
+    }
+    if (!isGeneratedChunk(chunkX, chunkZ)) {
+        return 0;
+    }
     return static_cast<std::size_t>(
-        std::count(blocks, blocks + kChunkBlockCount, kDiamondOreId));
+        impl_->level->placementCount(tileId, chunkX, chunkZ));
+}
+
+std::size_t WorldGenerator::countDiamonds(int chunkX, int chunkZ) const {
+    return count(kDiamondOreId, chunkX, chunkZ);
 }
 
 std::size_t WorldGenerator::countDiamonds() const {
-    std::size_t total = 0;
-    for (int chunkZ = 0; chunkZ < kWorldChunks; ++chunkZ) {
-        for (int chunkX = 0; chunkX < kWorldChunks; ++chunkX) {
-            total += countDiamonds(chunkX, chunkZ);
-        }
-    }
-    return total;
+    return count(kDiamondOreId);
 }
 
 std::vector<DiamondBlock> WorldGenerator::diamonds(int chunkX, int chunkZ) const {

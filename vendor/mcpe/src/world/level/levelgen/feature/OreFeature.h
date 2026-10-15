@@ -60,7 +60,10 @@ public:
                             for (int z2 = zt0; z2 <= zt1; z2++) {
                                 float zd = ((z2 + 0.5f) - zz) / (r / 2);
                                 if (xd * xd + yd * yd + zd * zd < 1) {
-                                    if (level->getTile(x2, y2, z2) == Tile::rock->id) level->setTileNoUpdate(x2, y2, z2, tile);
+                                    if (level->getTile(x2, y2, z2) == Tile::rock->id &&
+                                        level->setTileNoUpdate(x2, y2, z2, tile)) {
+                                        level->recordPlacement(tile, x2, y2, z2);
+                                    }
                                 }
                             }
                         }
